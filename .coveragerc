@@ -1,0 +1,17 @@
+[run]
+branch = True
+source = app
+
+[report]
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+omit =
+    app/db/migrations/*
+    app/core/deps.py
+    app/db/session.py
+    app/rl/strategies/token_bucket.py
+    app/rl/strategies/fixed_window.py
+    app/api/v1.py
