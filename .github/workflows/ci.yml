@@ -1,0 +1,131 @@
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: limitforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d limitforge"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Black
+        run: black --check .
+
+      - name: Run tests
+        env:
+          TEST_POSTGRES_DSN: postgresql+psycopg://postgres:postgres@localhost:5432/limitforge
+          REDIS_URL: redis://localhost:6379/0
+          ADMIN_BEARER_TOKEN: change-me-admin-token
+        run: pytest -q
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Prepare .env for compose
+        run: |
+          cat > .env <<'ENV'
+          APP_ENV=dev
+          APP_NAME=LimitForge RLS
+          APP_VERSION=0.1.0
+          ADMIN_BEARER_TOKEN=change-me-admin-token
+          POSTGRES_DSN=postgresql+psycopg://postgres:postgres@postgres:5432/limitforge
+          REDIS_URL=redis://redis:6379/0
+          ENV
+      - name: Build and start stack
+        run: |
+          docker compose up -d --build
+          echo "Waiting for API health..."
+          for i in {1..30}; do
+            curl -fsS http://localhost:8000/v1/health && break || sleep 2;
+          done
+      - name: Probe endpoints
+        run: |
+          curl -fsS http://localhost:8000/v1/health
+          curl -fsS http://localhost:8000/ | head -n 5 || true
+          curl -fsSI http://localhost:8000/metrics | head -n 5 || true
+      - name: End-to-end decision check
+        env:
+          ADMIN: change-me-admin-token
+        run: |
+          set -e
+          TENANT_JSON=$(curl -sS -X POST http://localhost:8000/v1/admin/tenants \
+            -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+            -d '{"name":"CI Demo"}')
+          TENANT=$(echo "$TENANT_JSON" | jq -r '.id')
+          PLAN_JSON=$(curl -sS -X POST http://localhost:8000/v1/admin/plans \
+            -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+            -d '{"tenant_id":"'"$TENANT"'","name":"basic","algorithm":"token_bucket","bucket_capacity":5,"refill_rate_per_sec":5}')
+          PLAN=$(echo "$PLAN_JSON" | jq -r '.id')
+          KEY_JSON=$(curl -sS -X POST http://localhost:8000/v1/admin/keys \
+            -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+            -d '{"tenant_id":"'"$TENANT"'","name":"k1"}')
+          RAW=$(echo "$KEY_JSON" | jq -r '.key')
+          curl -sS -X POST http://localhost:8000/v1/admin/policies \
+            -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+            -d '{"tenant_id":"'"$TENANT"'","resource":"GET:/ci","subject_type":"api_key","plan_id":"'"$PLAN"'"}' >/dev/null
+          # Expect at least the first decision to be allowed
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST http://localhost:8000/v1/check \
+            -H "X-API-Key: $RAW" -H 'Content-Type: application/json' \
+            -d '{"resource":"GET:/ci","subject":"user:ci","cost":1}')
+          test "$code" = "200"
+          jq -e '.allowed == true' /tmp/resp.json >/dev/null
+      - name: Show API logs on failure
+        if: failure()
+        run: docker compose logs api
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
