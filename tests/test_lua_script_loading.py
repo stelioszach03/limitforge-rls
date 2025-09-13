@@ -10,4 +10,3 @@ def test_token_bucket_loads_lua_script_text():
 def test_fixed_window_loads_lua_script_text():
     s = fw._get_script_text()
     assert isinstance(s, str) and "redis.call" in s
-

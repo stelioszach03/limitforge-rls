@@ -38,7 +38,12 @@ async def test_concurrency_wrapper():
 
     r = FakeRedis(decode_responses=True)
     ok, rem, retry = await concurrency_check(
-        r, api_key="k", namespace="ns", subject="s", params={"limit": 1, "ttl": 1}, cost=1
+        r,
+        api_key="k",
+        namespace="ns",
+        subject="s",
+        params={"limit": 1, "ttl": 1},
+        cost=1,
     )
     assert ok and rem == 0 and retry == 0
 
@@ -49,6 +54,11 @@ async def test_sliding_window_wrapper():
 
     r = FakeRedis(decode_responses=True)
     ok, rem, retry = await sliding_window_check(
-        r, api_key="k", namespace="ns", subject="s", params={"limit": 2, "window": 1}, cost=1
+        r,
+        api_key="k",
+        namespace="ns",
+        subject="s",
+        params={"limit": 2, "window": 1},
+        cost=1,
     )
     assert ok and rem == 1 and retry >= 0

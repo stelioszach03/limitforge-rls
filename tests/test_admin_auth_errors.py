@@ -17,4 +17,3 @@ async def test_admin_create_tenant_invalid_bearer(async_client):
     )
     assert resp.status_code == 403
     assert resp.json()["detail"].lower().startswith("invalid admin token".split()[0])
-

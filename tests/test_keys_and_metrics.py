@@ -33,4 +33,3 @@ def test_update_redis_pool_gauge_counts_created_minus_available():
     pool = SimpleNamespace(_created_connections=[1, 2, 3], _available_connections=[1])
     r = SimpleNamespace(connection_pool=pool)
     update_redis_pool_gauge(r)  # should not raise
-
