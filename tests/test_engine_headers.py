@@ -1,4 +1,3 @@
-import pytest
 from app.rl.engine import DecisionEngine
 from app.rl.schemas import CheckDecision
 
@@ -15,4 +14,3 @@ def test_engine_headers_static():
     )
     h = DecisionEngine.headers(d)
     assert h["X-RateLimit-Limit"] == "2"
-
