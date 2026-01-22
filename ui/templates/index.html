@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ app_name }}</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="brand">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 7h16v2H4V7zm2 4h12v2H6v-2zm3 4h6v2H9v-2z" fill="currentColor"/>
+        </svg>
+        <div class="brand-meta">
+          <h1>{{ app_name }}</h1>
+          <span class="tagline">Rate Limiter as a Service</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="health-badge" class="badge muted">Checking…</span>
+        <button id="theme-toggle" class="btn ghost" aria-label="Toggle theme">Theme</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h2>Lightning‑fast rate limit decisions</h2>
+        <p>Test your policy with a real request and see headers, decisions and remaining budget live.</p>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <div class="card-header">
+            <h3>Try a Decision</h3>
+            <div class="pill-group">
+              <button class="pill" data-example-resource="GET:/demo">GET:/demo</button>
+              <button class="pill" data-example-resource="GET:/orders">GET:/orders</button>
+              <button class="pill" data-example-subject="user:1">user:1</button>
+              <button class="pill" data-example-subject="user:42">user:42</button>
+            </div>
+          </div>
+
+          <form id="rl-form" class="form">
+            <div class="field">
+              <label for="api_key">API Key</label>
+              <div class="input-row">
+                <input id="api_key" name="api_key" type="password" placeholder="paste API key" required />
+                <button type="button" id="reveal-key" class="btn ghost">Show</button>
+              </div>
+              <small>Paste το raw key που δημιουργήθηκε από τα admin endpoints.</small>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label for="resource">Resource</label>
+                <input id="resource" name="resource" type="text" value="GET:/demo" required />
+              </div>
+              <div class="field">
+                <label for="subject">Subject</label>
+                <input id="subject" name="subject" type="text" value="user:1" required />
+              </div>
+              <div class="field sm">
+                <label for="cost">Cost</label>
+                <input id="cost" name="cost" type="number" min="1" value="1" />
+              </div>
+            </div>
+
+            <div class="actions">
+              <button type="submit" id="check-btn" class="btn primary">
+                <span class="spinner" aria-hidden="true"></span>
+                Check
+              </button>
+            </div>
+          </form>
+
+          <div id="result" class="result hidden">
+            <div class="verdict" id="verdict">—</div>
+
+            <div class="meter">
+              <div class="meter-fill" id="meter-fill" style="width: 0%"></div>
+              <div class="meter-text" id="meter-text">Remaining —</div>
+            </div>
+
+            <div class="kv">
+              <div><span>Limit</span><code id="h-limit">-</code></div>
+              <div><span>Remaining</span><code id="h-remaining">-</code></div>
+              <div><span>Reset (s)</span><code id="h-reset">-</code></div>
+              <div><span>Retry-After (s)</span><code id="h-retry">-</code></div>
+            </div>
+
+            <details open>
+              <summary>Response JSON</summary>
+              <pre id="json"></pre>
+            </details>
+
+            <details>
+              <summary>Request as curl</summary>
+              <pre id="curl"></pre>
+              <button class="btn ghost" id="copy-curl">Copy curl</button>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+  </html>

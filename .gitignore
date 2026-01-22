@@ -1,0 +1,33 @@
+# General
+.DS_Store
+.env
+.venv/
+__pycache__/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# VSCode
+.vscode/
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Docker
+*.log
+docker/*.pid
+
+# Alembic
+app/db/migrations/versions/*.pyc
+
+# Local artifacts
+test.db
+coverage/
+htmlcov/
+.idea/
+node_modules/
