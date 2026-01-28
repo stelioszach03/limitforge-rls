@@ -19,6 +19,7 @@ ruff
 black
 pytest
 pytest-asyncio
+pytest-cov
 faker
 fakeredis
 passlib[bcrypt]
