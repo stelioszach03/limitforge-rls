@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.security import verify_api_key, hash_api_key
+from app.core.security import verify_api_key
 from app.db import crud
 
 
@@ -14,4 +14,3 @@ async def test_verify_api_key_db_and_cache(db, fake_redis):
     # Second call should use cache fast path
     obj2 = await verify_api_key(db, fake_redis, h)
     assert obj2 is not None and obj2.active
-

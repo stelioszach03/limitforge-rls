@@ -1,9 +1,8 @@
 import pytest
-from sqlalchemy import select
 
 from app.rl.engine import DecisionEngine
 from app.db import crud
-from app.db.models import PlanAlgorithm, SubjectType, Plan as PlanModel
+from app.db.models import PlanAlgorithm, SubjectType
 
 
 class CrudNoGetById:
@@ -35,4 +34,3 @@ async def test_resolve_plan_explicit_id_fallback_select(db, fake_redis):
         explicit_plan_id=p.id,
     )
     assert str(plan.id) == str(p.id)
-

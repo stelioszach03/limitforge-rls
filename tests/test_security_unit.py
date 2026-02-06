@@ -1,6 +1,5 @@
 import pytest
 from fastapi import Request
-from starlette.datastructures import Headers
 
 from app.core.security import get_api_key_from_header, verify_admin
 
@@ -32,4 +31,3 @@ async def test_verify_admin_invalid_and_valid(monkeypatch):
     token = settings.ADMIN_BEARER_TOKEN
     ok = await verify_admin(f"Bearer {token}")
     assert ok == token
-
