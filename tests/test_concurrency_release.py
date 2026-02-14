@@ -19,4 +19,3 @@ async def test_concurrency_release_negative_resets():
     val = await release(r, "k", cost=2)
     assert val == 0
     assert await r.get("k") is None
-

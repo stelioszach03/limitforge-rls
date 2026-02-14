@@ -7,4 +7,3 @@ async def test_index_serves_ui(async_client):
     assert r.status_code == 200
     html = r.text.lower()
     assert "try a decision" in html
-
