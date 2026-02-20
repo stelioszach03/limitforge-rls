@@ -1,109 +1,1593 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ app_name }}</title>
-    <link rel="stylesheet" href="/static/style.css" />
-  </head>
-  <body>
-    <header class="site-header">
-      <div class="brand">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M4 7h16v2H4V7zm2 4h12v2H6v-2zm3 4h6v2H9v-2z" fill="currentColor"/>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>LimitForge RLS · Rate-limit decisions, forged in the atomic path</title>
+<meta name="description" content="LimitForge RLS — a tenant-aware rate-limiter service for APIs. Four algorithms (token bucket, fixed window, sliding window, concurrency), atomic Redis Lua scripts, Postgres-backed plans & keys, Prometheus metrics, 90% test coverage. FastAPI + Redis + Postgres." />
+<meta name="theme-color" content="#06161c" />
+<meta property="og:title" content="LimitForge RLS" />
+<meta property="og:description" content="Tenant-aware rate-limit decisions: token bucket, fixed / sliding window, concurrency — on an atomic Redis path, with Postgres-backed plans." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Figtree:ital,wght@0,300..900;1,300..900&family=Geist+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+:root {
+  /* Deep-petrol engineering palette */
+  --ink-0:       #05161c;   /* near-black with petrol undertone */
+  --ink-deep:    #02090d;
+  --ink-1:       #0b2530;   /* panel */
+  --ink-2:       #0f3342;   /* panel-hi */
+  --ink-3:       #163d4f;   /* hover */
+
+  --rule:        #1f465a;
+  --rule-hi:     #2d6a88;
+  --grid:        rgba(90, 160, 195, 0.08);
+
+  --text:        #e7f1f2;
+  --text-dim:    #b3c8cc;
+  --text-ash:    #7d9298;
+  --text-deep:   #4b6469;
+
+  --cyan:        #7fe6ff;   /* live wire */
+  --cyan-deep:   #2a9ec1;
+  --cyan-glow:   rgba(127, 230, 255, 0.22);
+
+  --allow:       #7ad9a0;   /* decision: allowed */
+  --allow-deep:  #3d8f62;
+  --block:       #ff7159;   /* decision: 429 */
+  --block-deep:  #a6371f;
+  --amber:       #ffb347;   /* warning / retry-after */
+  --amber-deep:  #b57324;
+
+  --display:  "Syne", ui-sans-serif, sans-serif;
+  --sans:     "Figtree", -apple-system, system-ui, sans-serif;
+  --mono:     "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --shell:    1220px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { background: var(--ink-deep); scroll-behavior: smooth; }
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.65;
+  background:
+    radial-gradient(1300px 720px at 82% -8%, rgba(127, 230, 255, 0.05), transparent 58%),
+    radial-gradient(1000px 800px at -8% 38%, rgba(122, 217, 160, 0.035), transparent 60%),
+    linear-gradient(180deg, var(--ink-0) 0%, var(--ink-deep) 100%);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Blueprint grid backdrop */
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 1200px 900px at 55% 40%, black 40%, transparent 95%);
+  -webkit-mask-image: radial-gradient(ellipse 1200px 900px at 55% 40%, black 40%, transparent 95%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Phosphor noise */
+body::after {
+  content: "";
+  position: fixed; inset: 0;
+  background-image: repeating-radial-gradient(circle at 30% 40%, rgba(127, 230, 255, 0.008) 0 1px, transparent 1px 3px),
+                    repeating-radial-gradient(circle at 70% 60%, rgba(122, 217, 160, 0.006) 0 1px, transparent 1px 4px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.shell { max-width: var(--shell); margin: 0 auto; padding: 0 32px; position: relative; z-index: 2; }
+
+a { color: var(--cyan); text-decoration: none; border-bottom: 1px solid rgba(127, 230, 255, 0.28); transition: color .16s, border-color .16s; }
+a:hover { color: var(--text); border-bottom-color: var(--text); }
+
+h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+h1 { font-size: clamp(50px, 7.2vw, 98px); line-height: 0.98; letter-spacing: -0.035em; }
+h2 { font-size: clamp(30px, 3.8vw, 46px); line-height: 1.08; letter-spacing: -0.02em; }
+h3 { font-size: 18px; letter-spacing: 0.03em; text-transform: uppercase; font-weight: 700; color: var(--cyan); }
+h4 { font-size: 17px; letter-spacing: -0.005em; font-weight: 600; color: var(--text); }
+
+code, pre, .mono { font-family: var(--mono); font-size: 13px; letter-spacing: -0.002em; }
+
+/* ============================================================
+   HEADER / NAV
+   ============================================================ */
+header.top {
+  position: sticky; top: 0; z-index: 40;
+  background: rgba(5, 22, 28, 0.82);
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
+  border-bottom: 1px solid var(--rule);
+}
+.top-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; gap: 20px; }
+.top-brand { display: flex; align-items: center; gap: 14px; }
+.mark {
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  border: 1px solid var(--rule-hi);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(127, 230, 255, 0.12), transparent 60%),
+    var(--ink-1);
+  position: relative;
+  border-radius: 2px;
+}
+.mark svg { width: 20px; height: 20px; }
+.mark::after {
+  content: ""; position: absolute; inset: -4px;
+  border: 1px solid transparent;
+  border-top-color: var(--cyan);
+  border-right-color: transparent;
+  opacity: 0.55;
+  border-radius: 3px;
+  animation: orbit 6s linear infinite;
+}
+@keyframes orbit { to { transform: rotate(360deg); } }
+
+.brand-meta { line-height: 1; }
+.brand-meta .brand-name {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+.brand-meta .brand-tag {
+  font-size: 11.5px;
+  color: var(--text-ash);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.top-links { display: flex; gap: 26px; align-items: center; }
+.top-links a { color: var(--text-dim); border: none; font-size: 13.5px; letter-spacing: 0.02em; }
+.top-links a:hover { color: var(--text); }
+.top-links .cta {
+  padding: 9px 16px;
+  background: var(--cyan);
+  color: var(--ink-0);
+  font-weight: 600;
+  border-radius: 2px;
+  border: 1px solid var(--cyan);
+  box-shadow: 0 0 0 1px var(--ink-0), 0 8px 20px -8px var(--cyan-glow);
+}
+.top-links .cta:hover { color: var(--ink-0); background: var(--text); border-color: var(--text); }
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero {
+  padding: 96px 0 56px;
+  position: relative;
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 48px;
+  align-items: end;
+}
+.issue {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-ash);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 30px;
+  display: flex; align-items: center; gap: 14px;
+}
+.issue .slash {
+  width: 36px; height: 1px; background: var(--rule-hi); display: inline-block;
+}
+.hero-kicker {
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.hero-kicker::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 0 4px var(--cyan-glow);
+}
+.hero h1 {
+  max-width: 14ch;
+  margin-bottom: 36px;
+}
+.hero h1 .serif {
+  font-family: "Syne", sans-serif;
+  font-style: italic;
+  font-weight: 600;
+  color: var(--cyan);
+  opacity: 0.95;
+}
+.hero p.lede {
+  max-width: 58ch;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  margin-bottom: 40px;
+}
+.hero .actions { display: flex; gap: 14px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 22px;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  border-radius: 2px;
+  transition: all .15s ease;
+  border: 1px solid;
+  cursor: pointer;
+}
+.btn.primary {
+  background: var(--cyan); color: var(--ink-0); border-color: var(--cyan);
+  box-shadow: 0 16px 40px -18px var(--cyan-glow);
+}
+.btn.primary:hover { background: var(--text); color: var(--ink-0); border-color: var(--text); }
+.btn.ghost {
+  background: transparent; color: var(--text); border-color: var(--rule-hi);
+}
+.btn.ghost:hover { background: var(--ink-1); border-color: var(--cyan); color: var(--cyan); }
+
+.hero-side {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-ash);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+.hero-side .dial {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
+  background: var(--ink-1);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.hero-side .dial .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-deep); }
+.hero-side .dial .dot.up { background: var(--allow); box-shadow: 0 0 0 3px rgba(122, 217, 160, 0.18); }
+.hero-side .dial .dot.down { background: var(--block); box-shadow: 0 0 0 3px rgba(255, 113, 89, 0.2); }
+
+.hero-stats {
+  margin-top: 64px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.stat {
+  background: var(--ink-1);
+  padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.stat .k {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+.stat .v {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.stat .v.accent { color: var(--cyan); }
+
+/* ============================================================
+   SECTION CHROME
+   ============================================================ */
+section { padding: 76px 0; position: relative; }
+section + section { border-top: 1px solid var(--rule); }
+.sec-head {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 28px;
+  margin-bottom: 44px;
+  align-items: start;
+}
+.sec-head .num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--cyan);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding-top: 12px;
+  border-top: 1px solid var(--cyan);
+  opacity: 0.9;
+}
+.sec-head .title { max-width: 56ch; }
+.sec-head .title h2 { margin-bottom: 14px; }
+.sec-head .title p {
+  color: var(--text-dim);
+  font-size: 17px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ============================================================
+   PLAYGROUND (the live widget)
+   ============================================================ */
+.play {
+  background: var(--ink-1);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.play::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(127, 230, 255, 0.03), transparent 40%);
+  pointer-events: none;
+}
+.play-head {
+  padding: 22px 28px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.play-head .tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.tabs { display: flex; gap: 2px; background: var(--rule); padding: 1px; border-radius: 2px; }
+.tab {
+  padding: 8px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--ink-1);
+  color: var(--text-dim);
+  border: none;
+  cursor: pointer;
+  transition: all .14s;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tab.active { background: var(--cyan); color: var(--ink-0); }
+.tab:not(.active):hover { color: var(--text); background: var(--ink-2); }
+
+.play-body {
+  padding: 32px;
+  display: grid;
+  grid-template-columns: 1.05fr 1.25fr;
+  gap: 32px;
+}
+.algo-desc { }
+.algo-desc .algo-title {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 10px;
+}
+.algo-desc .algo-spec {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--cyan);
+  letter-spacing: 0.08em;
+  margin-bottom: 16px;
+}
+.algo-desc p {
+  color: var(--text-dim);
+  font-size: 14.5px;
+  line-height: 1.6;
+  max-width: 48ch;
+  margin: 0 0 14px 0;
+}
+
+.algo-visual {
+  margin-top: 22px;
+  padding: 18px;
+  background: var(--ink-0);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  min-height: 130px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Bucket diagram */
+.bucket {
+  width: 100%;
+  height: 94px;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.bucket-tank {
+  width: 180px;
+  height: 94px;
+  border: 2px solid var(--rule-hi);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  position: relative;
+  overflow: hidden;
+  background: rgba(15, 51, 66, 0.4);
+}
+.bucket-fill {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: linear-gradient(180deg, var(--cyan) 0%, var(--cyan-deep) 100%);
+  transition: height 0.4s cubic-bezier(.2,.8,.2,1);
+  opacity: 0.82;
+}
+.bucket-label {
+  position: absolute;
+  top: 6px; left: 50%; transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  letter-spacing: 0.08em;
+}
+.bucket-count {
+  position: absolute;
+  top: 24px; left: 50%; transform: translateX(-50%);
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text);
+  mix-blend-mode: difference;
+}
+.bucket-cap {
+  position: absolute;
+  right: -58px; top: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
+.bucket-refill {
+  position: absolute;
+  left: -64px; top: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-align: right;
+}
+
+/* Window diagram */
+.window-viz {
+  display: flex;
+  gap: 3px;
+  height: 94px;
+  align-items: flex-end;
+  padding: 0 4px;
+}
+.window-viz .bar {
+  flex: 1;
+  background: var(--ink-3);
+  border-radius: 1px 1px 0 0;
+  transition: all .3s cubic-bezier(.2,.8,.2,1);
+  position: relative;
+  min-height: 4px;
+}
+.window-viz .bar.ok { background: linear-gradient(180deg, var(--allow), var(--allow-deep)); }
+.window-viz .bar.over { background: linear-gradient(180deg, var(--block), var(--block-deep)); }
+
+/* Control panel */
+.control {
+  background: var(--ink-0);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 22px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.ctrl-row { display: flex; flex-direction: column; gap: 6px; }
+.ctrl-row label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.ctrl-row input[type="text"] {
+  background: var(--ink-1);
+  border: 1px solid var(--rule);
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border-radius: 2px;
+}
+.ctrl-row input[type="text"]:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px var(--cyan-glow); }
+.ctrl-row input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%;
+  height: 3px;
+  background: var(--rule);
+  border-radius: 2px;
+  outline: none;
+}
+.ctrl-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 0 3px var(--ink-0), 0 0 0 4px var(--cyan-deep);
+  cursor: pointer;
+}
+.ctrl-row input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--cyan); border: none;
+  box-shadow: 0 0 0 3px var(--ink-0), 0 0 0 4px var(--cyan-deep);
+  cursor: pointer;
+}
+.range-readout {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  margin-top: 4px;
+}
+.fire {
+  margin-top: 6px;
+  padding: 14px 20px;
+  background: var(--cyan);
+  color: var(--ink-0);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--cyan);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all .14s;
+  box-shadow: 0 10px 30px -14px var(--cyan-glow);
+}
+.fire:hover { background: var(--text); border-color: var(--text); transform: translateY(-1px); }
+.fire:active { transform: translateY(0); }
+.fire:disabled { opacity: 0.5; cursor: not-allowed; transform: none; background: var(--rule); color: var(--text-ash); border-color: var(--rule); }
+
+/* Output strip */
+.output {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding: 20px;
+  background: var(--ink-0);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.output-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap; gap: 10px;
+}
+.output-head .lbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.output-head .summary {
+  display: flex; gap: 18px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.output-head .summary .s-a { color: var(--allow); }
+.output-head .summary .s-b { color: var(--block); }
+.output-head .summary .s-n { color: var(--text-ash); }
+
+.ticker {
+  display: grid;
+  grid-template-columns: repeat(25, 1fr);
+  gap: 3px;
+  margin-bottom: 14px;
+  min-height: 54px;
+}
+.tick {
+  background: var(--ink-1);
+  border-radius: 1px;
+  height: 54px;
+  position: relative;
+  transition: all .25s cubic-bezier(.2,.8,.2,1);
+  opacity: 0;
+}
+.tick.loading { background: var(--rule); opacity: 0.6; animation: tickPulse 0.8s ease-in-out infinite; }
+.tick.ok   { background: linear-gradient(180deg, var(--allow), var(--allow-deep)); opacity: 1; }
+.tick.over { background: linear-gradient(180deg, var(--block), var(--block-deep)); opacity: 1; }
+@keyframes tickPulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.75; } }
+
+.detail {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.detail > div { padding: 12px; background: var(--ink-1); border: 1px solid var(--rule); border-radius: 2px; }
+.detail > div .k { color: var(--text-ash); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 4px; }
+.detail > div .v { color: var(--text); font-size: 14px; font-weight: 600; }
+.detail > div .v.allow { color: var(--allow); }
+.detail > div .v.block { color: var(--block); }
+.detail > div .v.amber { color: var(--amber); }
+
+/* ============================================================
+   ARCHITECTURE
+   ============================================================ */
+.arch {
+  background: var(--ink-1);
+  border: 1px solid var(--rule);
+  padding: 40px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.9;
+  position: relative;
+  overflow-x: auto;
+}
+.arch pre { margin: 0; white-space: pre; color: var(--text-dim); }
+.arch .k { color: var(--cyan); font-weight: 500; }
+.arch .g { color: var(--allow); }
+.arch .y { color: var(--amber); }
+.arch .r { color: var(--block); }
+.arch .dim { color: var(--text-ash); }
+
+.atomic-grid {
+  margin-top: 36px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+.atomic-grid > div {
+  background: var(--ink-1);
+  padding: 26px 28px;
+}
+.atomic-grid h4 { margin-bottom: 10px; }
+.atomic-grid p { color: var(--text-dim); margin: 0 0 8px 0; font-size: 14px; }
+
+/* ============================================================
+   ALGORITHMS GRID
+   ============================================================ */
+.algo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.algo-card {
+  background: var(--ink-1);
+  padding: 32px;
+  position: relative;
+  transition: background .15s;
+}
+.algo-card:hover { background: var(--ink-2); }
+.algo-card .tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.algo-card h3 {
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 24px;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.algo-card p { color: var(--text-dim); margin: 0 0 14px 0; font-size: 14px; line-height: 1.55; }
+.algo-card .rule {
+  height: 1px; background: var(--rule); margin: 14px -32px;
+}
+.algo-card .eq {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-ash);
+  background: var(--ink-0);
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* ============================================================
+   API REFERENCE
+   ============================================================ */
+.api-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.api-card {
+  background: var(--ink-1);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 24px;
+}
+.api-card .route {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 10px;
+  letter-spacing: 0.01em;
+}
+.verb {
+  display: inline-block;
+  padding: 2px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--ink-0);
+  border-radius: 2px;
+  margin-right: 8px;
+}
+.verb.get  { background: var(--cyan); }
+.verb.post { background: var(--allow); }
+.api-card p { color: var(--text-dim); font-size: 14px; margin: 0 0 10px 0; }
+.api-card pre {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--ink-0);
+  padding: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  overflow-x: auto;
+  margin: 0;
+  line-height: 1.55;
+}
+.api-card pre .k { color: var(--cyan); }
+.api-card pre .s { color: var(--allow); }
+
+/* ============================================================
+   OBSERVABILITY
+   ============================================================ */
+.obs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 2px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+.obs > div {
+  background: var(--ink-1);
+  padding: 28px;
+}
+.obs h4 { margin-bottom: 10px; }
+.obs p { color: var(--text-dim); font-size: 14px; margin: 0 0 10px 0; line-height: 1.55; }
+.obs code {
+  font-size: 12px; color: var(--cyan);
+  background: var(--ink-0); padding: 1px 6px; border-radius: 2px;
+  border: 1px solid var(--rule);
+}
+
+/* ============================================================
+   QUOTE / EPIGRAPH
+   ============================================================ */
+.epigraph {
+  padding: 100px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  text-align: center;
+}
+.epigraph blockquote {
+  font-family: var(--display);
+  font-size: clamp(28px, 4.2vw, 46px);
+  font-weight: 500;
+  font-style: italic;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  max-width: 26ch;
+  margin: 0 auto 20px;
+  text-wrap: balance;
+}
+.epigraph blockquote .hi { color: var(--cyan); font-style: normal; }
+.epigraph cite {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-ash);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-style: normal;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer {
+  padding: 60px 0 80px;
+  border-top: 1px solid var(--rule);
+  background: var(--ink-deep);
+}
+.foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; }
+.foot-brand .bn { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: -0.01em; }
+.foot-brand p { color: var(--text-ash); max-width: 40ch; font-size: 13.5px; margin-top: 8px; line-height: 1.55; }
+.foot-col h5 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--cyan); margin: 0 0 14px 0;
+}
+.foot-col ul { list-style: none; margin: 0; padding: 0; }
+.foot-col li { margin-bottom: 8px; font-size: 13.5px; }
+.foot-col a { color: var(--text-dim); border: none; }
+.foot-col a:hover { color: var(--text); }
+.foot-meta {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+  color: var(--text-ash); text-transform: uppercase;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 900px) {
+  .hero-grid { grid-template-columns: 1fr; }
+  .hero-side { align-items: flex-start; }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .play-body { grid-template-columns: 1fr; }
+  .atomic-grid, .algo-grid, .api-grid { grid-template-columns: 1fr; }
+  .obs { grid-template-columns: 1fr; }
+  .foot-grid { grid-template-columns: 1fr 1fr; }
+  .sec-head { grid-template-columns: 1fr; gap: 12px; }
+  .sec-head .num { border-top: none; border-left: 2px solid var(--cyan); padding: 2px 0 2px 14px; }
+  .ticker { grid-template-columns: repeat(10, 1fr); }
+}
+@media (max-width: 560px) {
+  .shell { padding: 0 20px; }
+  .hero { padding: 64px 0 32px; }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .top-links a:not(.cta) { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="shell top-bar">
+    <div class="top-brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#7fe6ff" stroke-width="1.7" stroke-linecap="square" stroke-linejoin="miter">
+          <path d="M3 10 L8 6 L8 10 L16 10 L16 6 L21 10 L21 18 L3 18 Z"/>
+          <path d="M8 14 L16 14" stroke="#ffb347"/>
+          <circle cx="5.5" cy="14" r="0.9" fill="#7fe6ff"/>
         </svg>
-        <div class="brand-meta">
-          <h1>{{ app_name }}</h1>
-          <span class="tagline">Rate Limiter as a Service</span>
+      </div>
+      <div class="brand-meta">
+        <div class="brand-name">LimitForge <span style="opacity:.5;font-weight:500">/</span> RLS</div>
+        <div class="brand-tag">Rate-limit service · plan-based · atomic</div>
+      </div>
+    </div>
+    <nav class="top-links">
+      <a href="#playground">Playground</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#algorithms">Algorithms</a>
+      <a href="#api">API</a>
+      <a class="cta" href="https://github.com/stelioszach03/limitforge-rls" target="_blank" rel="noopener">Source ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="shell">
+    <div class="issue">
+      <span>Service Bulletin · Vol. 01</span>
+      <span class="slash"></span>
+      <span>Rate-limit edition · Apr 2026</span>
+    </div>
+    <div class="hero-grid">
+      <div>
+        <div class="hero-kicker">Live service · v0.1 · 90% coverage</div>
+        <h1>Tenant-aware rate limits, <span class="serif">forged in the atomic path.</span></h1>
+        <p class="lede">A multi-tenant rate-limit service that answers in a single Redis round-trip: four algorithms — token bucket, fixed window, sliding window, concurrency — each compiled into a Lua script so the decision, the header set, and the ledger update are indivisible. Plans and keys live in Postgres; decisions burn through Redis.</p>
+        <div class="actions">
+          <a class="btn primary" href="#playground">Run a live burst <span aria-hidden="true">→</span></a>
+          <a class="btn ghost" href="https://stelioszach.com/limitforge-rls/docs" target="_blank" rel="noopener">OpenAPI docs ↗</a>
+          <a class="btn ghost" href="https://github.com/stelioszach03/limitforge-rls" target="_blank" rel="noopener">Source ↗</a>
         </div>
       </div>
-      <div class="header-actions">
-        <span id="health-badge" class="badge muted">Checking…</span>
-        <button id="theme-toggle" class="btn ghost" aria-label="Toggle theme">Theme</button>
+      <aside class="hero-side">
+        <div>Operational status</div>
+        <div class="dial" id="health-dial">
+          <span class="dot" id="health-dot"></span>
+          <span id="health-text">probing…</span>
+        </div>
+        <div id="version-line" style="margin-top: 10px;">Version · —</div>
+      </aside>
+    </div>
+
+    <div class="hero-stats">
+      <div class="stat"><div class="k">Algorithms</div><div class="v accent">4</div></div>
+      <div class="stat"><div class="k">Decision path</div><div class="v">1 RTT</div></div>
+      <div class="stat"><div class="k">Coverage</div><div class="v">90%</div></div>
+      <div class="stat"><div class="k">Backends</div><div class="v">Redis · Postgres</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PLAYGROUND ================= -->
+<section id="playground">
+  <div class="shell">
+    <div class="sec-head">
+      <div class="num">Section 01 — Playground</div>
+      <div class="title">
+        <h2>Fire a burst at the live service and watch it throttle.</h2>
+        <p>Every button press below goes to the real <code style="color:var(--cyan);font-family:var(--mono)">POST /v1/check</code> against a seeded demo tenant on the VPS. Switch the algorithm tab to shunt the burst through a different Lua path. The green bars are <span style="color:var(--allow);font-weight:600">200 allowed</span>; the red bars are <span style="color:var(--block);font-weight:600">429 throttled</span>.</p>
       </div>
-    </header>
+    </div>
 
-    <main class="container">
-      <section class="hero">
-        <h2>Lightning‑fast rate limit decisions</h2>
-        <p>Test your policy with a real request and see headers, decisions and remaining budget live.</p>
-      </section>
+    <div class="play">
+      <div class="play-head">
+        <div class="tag">Endpoint · POST /limitforge-rls/v1/check</div>
+        <div class="tabs" role="tablist" id="algo-tabs">
+          <button class="tab active" data-algo="token_bucket">Token bucket</button>
+          <button class="tab" data-algo="fixed_window">Fixed window</button>
+          <button class="tab" data-algo="sliding_window">Sliding window</button>
+          <button class="tab" data-algo="concurrency">Concurrency</button>
+        </div>
+      </div>
 
-      <section class="grid">
-        <div class="card">
-          <div class="card-header">
-            <h3>Try a Decision</h3>
-            <div class="pill-group">
-              <button class="pill" data-example-resource="GET:/demo">GET:/demo</button>
-              <button class="pill" data-example-resource="GET:/orders">GET:/orders</button>
-              <button class="pill" data-example-subject="user:1">user:1</button>
-              <button class="pill" data-example-subject="user:42">user:42</button>
+      <div class="play-body">
+        <div class="algo-desc">
+          <div class="algo-title" id="algo-title">Token bucket</div>
+          <div class="algo-spec" id="algo-spec">capacity 10 · refill 2 tok/s · cost 1/call</div>
+          <p id="algo-desc-p">A bucket of tokens refills at a fixed rate. Each call consumes tokens equal to its cost; if the bucket is empty the call gets a 429 with a <code>Retry-After</code> header derived from the refill rate. Classic Stripe / AWS choice — tolerates bursts up to the cap but enforces the mean.</p>
+
+          <div class="algo-visual" id="algo-visual">
+            <div class="bucket">
+              <div class="bucket-tank">
+                <div class="bucket-fill" id="bucket-fill" style="height: 100%"></div>
+                <div class="bucket-label">TOKENS</div>
+                <div class="bucket-count" id="bucket-count">10</div>
+              </div>
+              <div class="bucket-refill">← refill<br/>2 tok/s</div>
+              <div class="bucket-cap">cap<br/>10 →</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="ctrl-row">
+            <label for="subject-input">Subject (the caller identity)</label>
+            <input type="text" id="subject-input" value="visitor-loading…" spellcheck="false" autocomplete="off" />
+          </div>
+          <div class="ctrl-row">
+            <label for="burst-range">Burst size — <span id="burst-readout" style="color:var(--cyan)">15 calls</span></label>
+            <input type="range" id="burst-range" min="1" max="25" value="15" />
+            <div class="range-readout">
+              <span>1</span><span>13</span><span>25</span>
+            </div>
+          </div>
+          <div class="ctrl-row">
+            <label>Tenant plan</label>
+            <div style="font-family: var(--mono); font-size: 12px; color: var(--text-dim); padding: 8px 0;">
+              <span id="plan-id-chip" style="color:var(--cyan)">demo-bucket</span>
+              <span style="color: var(--text-ash); margin-left: 6px;">·</span>
+              <span style="color: var(--text-ash); margin-left: 6px;" id="plan-window-chip">bucket cap=10, refill=2/s</span>
             </div>
           </div>
 
-          <form id="rl-form" class="form">
-            <div class="field">
-              <label for="api_key">API Key</label>
-              <div class="input-row">
-                <input id="api_key" name="api_key" type="password" placeholder="paste API key" required />
-                <button type="button" id="reveal-key" class="btn ghost">Show</button>
-              </div>
-              <small>Paste το raw key που δημιουργήθηκε από τα admin endpoints.</small>
-            </div>
-
-            <div class="row">
-              <div class="field">
-                <label for="resource">Resource</label>
-                <input id="resource" name="resource" type="text" value="GET:/demo" required />
-              </div>
-              <div class="field">
-                <label for="subject">Subject</label>
-                <input id="subject" name="subject" type="text" value="user:1" required />
-              </div>
-              <div class="field sm">
-                <label for="cost">Cost</label>
-                <input id="cost" name="cost" type="number" min="1" value="1" />
-              </div>
-            </div>
-
-            <div class="actions">
-              <button type="submit" id="check-btn" class="btn primary">
-                <span class="spinner" aria-hidden="true"></span>
-                Check
-              </button>
-            </div>
-          </form>
-
-          <div id="result" class="result hidden">
-            <div class="verdict" id="verdict">—</div>
-
-            <div class="meter">
-              <div class="meter-fill" id="meter-fill" style="width: 0%"></div>
-              <div class="meter-text" id="meter-text">Remaining —</div>
-            </div>
-
-            <div class="kv">
-              <div><span>Limit</span><code id="h-limit">-</code></div>
-              <div><span>Remaining</span><code id="h-remaining">-</code></div>
-              <div><span>Reset (s)</span><code id="h-reset">-</code></div>
-              <div><span>Retry-After (s)</span><code id="h-retry">-</code></div>
-            </div>
-
-            <details open>
-              <summary>Response JSON</summary>
-              <pre id="json"></pre>
-            </details>
-
-            <details>
-              <summary>Request as curl</summary>
-              <pre id="curl"></pre>
-              <button class="btn ghost" id="copy-curl">Copy curl</button>
-            </details>
+          <button class="fire" id="fire-btn">▶ Fire burst</button>
+          <div id="fire-hint" style="font-family: var(--mono); font-size: 11px; color: var(--text-ash); letter-spacing: 0.04em;">
+            Each run sends all calls in parallel. Subject is randomised on load so bursts are isolated.
           </div>
         </div>
-      </section>
-    </main>
 
-    <script src="/static/app.js"></script>
-  </body>
-  </html>
+        <div class="output">
+          <div class="output-head">
+            <span class="lbl">Response timeline</span>
+            <div class="summary">
+              <span class="s-a" id="sum-allowed">● 0 allowed</span>
+              <span class="s-b" id="sum-blocked">● 0 blocked</span>
+              <span class="s-n" id="sum-latency">— p50 latency</span>
+            </div>
+          </div>
+          <div class="ticker" id="ticker"></div>
+          <div class="detail">
+            <div><div class="k">Last status</div><div class="v" id="last-status">waiting…</div></div>
+            <div><div class="k">Remaining</div><div class="v" id="last-remaining">—</div></div>
+            <div><div class="k">Retry-After</div><div class="v" id="last-retry">—</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section id="architecture">
+  <div class="shell">
+    <div class="sec-head">
+      <div class="num">Section 02 — Architecture</div>
+      <div class="title">
+        <h2>One round-trip from request to decision, plus a journal.</h2>
+        <p>Plans and API keys live in Postgres and are warm-cached in Redis with TTLs. A decision never touches Postgres on the hot path — it only consults the cached plan and executes a single atomic Lua script against the Redis state for the <code>(tenant, subject, resource)</code> triple.</p>
+      </div>
+    </div>
+
+    <div class="arch">
+<pre>  client  ─── POST /v1/check ──▶  <span class="k">nginx</span>  ──▶  <span class="k">FastAPI</span> (app.api.v1)
+                                                        │
+                                                        ▼
+                    <span class="dim">x-api-key verify (Redis first, Postgres fallback)</span>
+                                                        │
+                                                        ▼
+                    <span class="dim">resolve Plan (cache hit → Redis, miss → Postgres + fill)</span>
+                                                        │
+                                                        ▼
+                                           <span class="k">DecisionEngine.check(plan)</span>
+                                                        │
+                                 ┌────────────┬─────────┴──────────┬───────────────┐
+                                 ▼            ▼                    ▼               ▼
+                          <span class="g">token_bucket</span>  <span class="g">fixed_window</span>      <span class="g">sliding_window</span>   <span class="g">concurrency</span>
+                              Lua          INCR + TTL             ZSET + ZREM      ZSET + TTL
+                                 │            │                    │               │
+                                 └────────────┴─────────┬──────────┴───────────────┘
+                                                        ▼
+                                 <span class="y">decision = { allowed, remaining, reset_at, retry_after_ms }</span>
+                                                        │
+                          ┌─────────────────────────────┼─────────────────────────────┐
+                          ▼                             ▼                             ▼
+                   <span class="dim">response headers</span>           <span class="dim">Prometheus counters</span>             <span class="dim">structlog JSON line</span>
+                   X-RateLimit-Limit             rl_allowed_total              event=api.v1.check
+                   X-RateLimit-Remaining         rl_blocked_total              algorithm=...
+                   X-RateLimit-Reset                                           outcome=...
+                   Retry-After</pre>
+    </div>
+
+    <div class="atomic-grid">
+      <div>
+        <h4>Atomic path (Lua)</h4>
+        <p>Read counter, compute new state, write, return — all inside a single <code>EVAL</code>. Redis's single-threaded execution guarantees no two decisions for the same key interleave, which is the only correctness property the limiter needs.</p>
+      </div>
+      <div>
+        <h4>Plans warm the cache</h4>
+        <p>Plan rows are hashed into Redis on first resolve and refreshed on every write via admin APIs. The hot <code>POST /v1/check</code> hits Postgres only on a cold tenant/plan pair.</p>
+      </div>
+      <div>
+        <h4>Subject granularity</h4>
+        <p>The <code>subject</code> string is the rate-limit identity — it can be an end-user id, an API key hash, or a request IP. Concurrency plans also match on subject for tracking in-flight requests.</p>
+      </div>
+      <div>
+        <h4>Header discipline</h4>
+        <p>Every <code>200</code> and every <code>429</code> carry <code>X-RateLimit-Limit / Remaining / Reset</code> and <code>Retry-After</code>. Consumers can back off without re-requesting the plan — the state is on the wire.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ALGORITHMS ================= -->
+<section id="algorithms">
+  <div class="shell">
+    <div class="sec-head">
+      <div class="num">Section 03 — Algorithms</div>
+      <div class="title">
+        <h2>Four limiter families. One decision contract.</h2>
+        <p>Each algorithm is implemented as a Lua script with a stable return contract — <code>{ allowed, remaining, reset_at, retry_after_ms }</code> — so the surrounding Python code is identical regardless of backend. Plans pick the one that matches the shape of traffic they're throttling.</p>
+      </div>
+    </div>
+
+    <div class="algo-grid">
+      <div class="algo-card">
+        <div class="tag">A · Smoothed</div>
+        <h3>Token bucket</h3>
+        <p>A bucket of tokens refills continuously at <code>r</code> tok/s up to capacity <code>C</code>. Each call withdraws <code>cost</code> tokens; empty bucket ⇒ 429. Excellent when you want to tolerate short bursts but enforce the mean. Default choice.</p>
+        <div class="rule"></div>
+        <pre class="eq">tokens  ← min(C, tokens + (now − ts) · r)
+ts      ← now
+if tokens &lt; cost:   return (429, retry = (cost − tokens) / r)
+tokens  ← tokens − cost
+return (200, remaining = floor(tokens))</pre>
+      </div>
+
+      <div class="algo-card">
+        <div class="tag">B · Bounded</div>
+        <h3>Fixed window</h3>
+        <p>A counter per calendar window of <code>W</code> seconds; +1 per call, 429 when the counter exceeds <code>L</code>. Cheapest to compute (single <code>INCR</code> + <code>EXPIRE</code>) and gives strong upper-bounds. Prone to edge-bursts at window boundaries.</p>
+        <div class="rule"></div>
+        <pre class="eq">key     = tenant:subject:resource:floor(now/W)
+n       = INCR(key); if new: EXPIRE(key, W)
+if n &gt; L: return (429, retry = W − (now mod W))
+return (200, remaining = L − n)</pre>
+      </div>
+
+      <div class="algo-card">
+        <div class="tag">C · Rolling</div>
+        <h3>Sliding window (log)</h3>
+        <p>Timestamps live in a sorted set; on each call trim entries older than <code>now − W</code>, then accept only if <code>|set| &lt; L</code>. Removes fixed-window's edge effect at the cost of <code>O(K)</code> memory per active subject for the keep-alive window.</p>
+        <div class="rule"></div>
+        <pre class="eq">ZREMRANGEBYSCORE  key  −∞  now − W
+k   = ZCARD key
+if k ≥ L: return (429, retry derived from oldest)
+ZADD  key  now  request_id
+EXPIRE key  W + 1</pre>
+      </div>
+
+      <div class="algo-card">
+        <div class="tag">D · In-flight</div>
+        <h3>Concurrency</h3>
+        <p>Tracks <em>open</em> calls per subject, not rate. A request ticket is added to the subject's sorted set on entry; the call's id is evicted on completion (or by stale-TTL if the caller never returns). 429 when the open count hits <code>C</code>.</p>
+        <div class="rule"></div>
+        <pre class="eq">now   = timestamp_ms()
+ZREMRANGEBYSCORE key  −∞  now − STALE_TTL
+n     = ZCARD key
+if n ≥ C: return (429, retry = STALE_TTL)
+ZADD  key  now  request_uuid
+return (200, remaining = C − n − 1)</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= API REFERENCE ================= -->
+<section id="api">
+  <div class="shell">
+    <div class="sec-head">
+      <div class="num">Section 04 — API surface</div>
+      <div class="title">
+        <h2>A narrow public surface, administered out-of-band.</h2>
+        <p>Callers only ever hit <code>/v1/check</code> — the entire decision contract is expressed there. <code>/v1/admin/*</code> is behind a bearer token and is where tenants, plans, keys, and resource policies are provisioned. Everything is JSON; OpenAPI spec is live.</p>
+      </div>
+    </div>
+
+    <div class="api-grid">
+      <div class="api-card">
+        <div class="route"><span class="verb post">POST</span> /v1/check</div>
+        <p>The hot path. Authenticates with <code>x-api-key</code>, resolves (or overrides) the plan, returns a decision in ~1ms.</p>
+<pre><span class="k">curl</span> -X POST /limitforge-rls/v1/check \
+  -H <span class="s">"x-api-key: $KEY"</span> \
+  -H <span class="s">"content-type: application/json"</span> \
+  -d <span class="s">'{"resource":"GET:/orders","subject":"user:42",
+       "cost":1,"plan_id":"…"}'</span></pre>
+      </div>
+
+      <div class="api-card">
+        <div class="route"><span class="verb get">GET</span> /v1/health</div>
+        <p>Cheap liveness. Returns <code>{"status":"ok","version":"0.1.0"}</code>. Also exported to Prometheus.</p>
+<pre><span class="k">curl</span> /limitforge-rls/v1/health
+<span style="color:var(--text-ash)">{"status":"ok","version":"0.1.0"}</span></pre>
+      </div>
+
+      <div class="api-card">
+        <div class="route"><span class="verb post">POST</span> /v1/admin/plans</div>
+        <p>Create a plan. Algorithm-specific fields are validated — e.g. <code>token_bucket</code> requires <code>bucket_capacity</code> + <code>refill_rate_per_sec</code>.</p>
+<pre><span class="k">curl</span> -X POST /v1/admin/plans \
+  -H <span class="s">"Authorization: Bearer $ADMIN"</span> \
+  -d <span class="s">'{"tenant_id":"…","name":"pro",
+       "algorithm":"token_bucket",
+       "bucket_capacity":100,
+       "refill_rate_per_sec":20}'</span></pre>
+      </div>
+
+      <div class="api-card">
+        <div class="route"><span class="verb post">POST</span> /v1/admin/keys</div>
+        <p>Mint an API key for a tenant. Secret is returned exactly once; salted-SHA256 hash is stored and cached.</p>
+<pre><span class="k">curl</span> -X POST /v1/admin/keys \
+  -H <span class="s">"Authorization: Bearer $ADMIN"</span> \
+  -d <span class="s">'{"tenant_id":"…","name":"prod-app"}'</span>
+<span style="color:var(--text-ash)">→ {"key":"…","key_hash":"…"}</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= OBSERVABILITY ================= -->
+<section>
+  <div class="shell">
+    <div class="sec-head">
+      <div class="num">Section 05 — Observability</div>
+      <div class="title">
+        <h2>Prometheus, structlog, OpenTelemetry — all first-class.</h2>
+        <p>You can't fix a limiter you can't see. Every decision emits a Prometheus counter, a structured log line, and an OTEL span; no <code>print()</code>s, no ad-hoc metrics.</p>
+      </div>
+    </div>
+
+    <div class="obs">
+      <div>
+        <h4>Metrics</h4>
+        <p><code>rl_allowed_total</code> and <code>rl_blocked_total</code> counters labelled by route outcome. Plus <code>requests_total{route,outcome}</code> for every FastAPI route.</p>
+        <p><a href="https://stelioszach.com/limitforge-rls/metrics/" target="_blank" rel="noopener">Scrape live metrics ↗</a></p>
+      </div>
+      <div>
+        <h4>Logs</h4>
+        <p>JSON lines via <code>structlog</code>. Every check logs <code>algorithm</code>, <code>tenant</code>, <code>subject_hash</code>, and <code>outcome</code> so ad-hoc analysis is one <code>jq</code> away.</p>
+      </div>
+      <div>
+        <h4>Traces</h4>
+        <p>OTEL instrumentation on FastAPI, SQLAlchemy and Redis. Each <code>/v1/check</code> span carries the plan id and decision. Export to any OTLP collector.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= EPIGRAPH ================= -->
+<section class="epigraph">
+  <div class="shell">
+    <blockquote>
+      “A rate limiter is a <span class="hi">contract</span>, not a barrier —<br/>
+      it tells the client exactly how to behave.”
+    </blockquote>
+    <cite>— Design note · LimitForge RLS, 2026</cite>
+  </div>
+</section>
+
+<!-- ================= FOOTER ================= -->
+<footer>
+  <div class="shell">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <div class="bn">LimitForge RLS</div>
+        <p>A tenant-aware, plan-driven rate-limit service. FastAPI + Redis + Postgres, shipped with Docker Compose, CI coverage gate at 90%, Prometheus exporters, and a full OpenAPI surface.</p>
+      </div>
+      <div class="foot-col">
+        <h5>Live</h5>
+        <ul>
+          <li><a href="https://stelioszach.com/limitforge-rls/v1/health" target="_blank" rel="noopener">Health ↗</a></li>
+          <li><a href="https://stelioszach.com/limitforge-rls/docs" target="_blank" rel="noopener">OpenAPI docs ↗</a></li>
+          <li><a href="https://stelioszach.com/limitforge-rls/metrics/" target="_blank" rel="noopener">Prometheus ↗</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h5>Source</h5>
+        <ul>
+          <li><a href="https://github.com/stelioszach03/limitforge-rls" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li><a href="https://github.com/stelioszach03/limitforge-rls#readme" target="_blank" rel="noopener">README ↗</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h5>Author</h5>
+        <ul>
+          <li><a href="https://stelioszach.com" target="_blank" rel="noopener">stelioszach.com ↗</a></li>
+          <li><a href="mailto:sdi2200243@di.uoa.gr">sdi2200243@di.uoa.gr</a></li>
+          <li><a href="https://github.com/stelioszach03" target="_blank" rel="noopener">github/stelioszach03 ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <span>© 2026 Stelios Zacharioudakis</span>
+      <span>Built in Athens · runs on a Hetzner VPS</span>
+    </div>
+  </div>
+</footer>
+</main>
+
+<script>
+(() => {
+  // Resolve base URL — works in three cases:
+  //   1) served as stelioszach.com/limitforge-rls/  → relative '/limitforge-rls'
+  //   2) served directly from FastAPI container root → relative ''
+  //   3) opened from localhost / file:// for preview → absolute public VPS
+  const host = window.location.host;
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const isSubpath = pathParts[0] === 'limitforge-rls';
+  const isProdHost = host === 'stelioszach.com' || host === 'www.stelioszach.com';
+  const isLocal = host.startsWith('127.') || host.startsWith('localhost') || host.startsWith('0.0.0.0') || host.includes('.local');
+  const API_BASE  = isLocal
+    ? 'https://stelioszach.com/limitforge-rls'
+    : (isSubpath || !isProdHost ? (isSubpath ? '/limitforge-rls' : '') : '/limitforge-rls');
+  const API_KEY   = '6fIqNQtZcyRHc49GAHEaX5tk5lw3Ewb9OEm1pqwMyIo';
+  const TENANT_ID = 'ba4696ae-2d4f-450b-9770-a8208ad8129c';
+
+  const PLANS = {
+    token_bucket:   { id: '197a7f69-3cea-4329-a8c7-512e9617c2aa', name: 'demo-bucket',       chip: 'bucket cap=10, refill=2/s',      spec: 'capacity 10 · refill 2 tok/s · cost 1/call' },
+    fixed_window:   { id: '3f8db59f-ef08-4345-b27f-1946275651b9', name: 'demo-fixed',        chip: 'fixed 15 / 10 s',                spec: '15 requests per 10-second calendar window' },
+    sliding_window: { id: '9737b017-cea1-46ca-af53-a5f3e2bcf67a', name: 'demo-sliding',      chip: 'sliding 20 / 10 s',              spec: 'rolling 10-second window, cap 20' },
+    concurrency:    { id: '72ddc3e4-f0db-4bf5-810e-d560b36338f8', name: 'demo-concurrency',  chip: 'max 3 in-flight',                spec: 'max 3 concurrent calls per subject' }
+  };
+
+  const DESCRIPTIONS = {
+    token_bucket:   "A bucket of tokens refills at a fixed rate. Each call consumes tokens equal to its cost; if the bucket is empty the call gets a 429 with a Retry-After header derived from the refill rate. Classic Stripe / AWS choice — tolerates bursts up to the cap but enforces the mean.",
+    fixed_window:   "A counter per calendar window; +1 per call, 429 when the counter exceeds the limit. Cheapest to compute (single INCR + EXPIRE) and gives strong upper bounds. Susceptible to bursts at window edges.",
+    sliding_window: "Timestamps of each call are kept in a Redis sorted set; on every request we trim entries older than now minus window and reject if the set size has reached the limit. Smoother than fixed window; slightly more memory per active subject.",
+    concurrency:    "Tracks the number of in-flight calls per subject rather than a rate. A request id goes into a sorted set on entry and is evicted either by the caller or by a stale-TTL. Once the in-flight count hits the limit, new calls 429."
+  };
+
+  // --- State ---
+  const state = {
+    algorithm: 'token_bucket',
+    burst:     15,
+    subject:   randomSubject(),
+    bucketCap: 10,
+    bucketTokens: 10,
+    refillPerSec: 2,
+  };
+
+  // --- Helpers ---
+  function randomSubject() {
+    const r = Math.random().toString(36).slice(2, 9);
+    return 'visitor-' + r;
+  }
+
+  function $(sel) { return document.querySelector(sel); }
+  function $$(sel) { return [...document.querySelectorAll(sel)]; }
+
+  // --- Health probe ---
+  async function probeHealth() {
+    const dot  = $('#health-dot');
+    const text = $('#health-text');
+    const ver  = $('#version-line');
+    try {
+      const t0 = performance.now();
+      const r = await fetch(API_BASE + '/v1/health', { cache: 'no-store' });
+      const j = await r.json();
+      const ms = Math.round(performance.now() - t0);
+      if (j.status === 'ok') {
+        dot.className = 'dot up';
+        text.textContent = 'live · ' + ms + ' ms';
+        ver.textContent  = 'Version · ' + j.version;
+      } else {
+        dot.className = 'dot down';
+        text.textContent = 'degraded';
+      }
+    } catch (e) {
+      dot.className = 'dot down';
+      text.textContent = 'offline';
+      ver.textContent  = 'Version · —';
+    }
+  }
+
+  // --- Bucket visual ---
+  function updateBucketVisual() {
+    const fill  = $('#bucket-fill');
+    const count = $('#bucket-count');
+    if (state.algorithm !== 'token_bucket') {
+      if (fill)  { fill.style.height = '100%'; fill.style.opacity = '0.25'; }
+      if (count) count.textContent = '—';
+      return;
+    }
+    if (fill)  { fill.style.opacity = '0.82'; fill.style.height = (state.bucketTokens / state.bucketCap * 100) + '%'; }
+    if (count) count.textContent = Math.round(state.bucketTokens);
+  }
+
+  // Replace visual based on algorithm
+  function renderAlgoVisual() {
+    const host = $('#algo-visual');
+    if (state.algorithm === 'token_bucket') {
+      host.innerHTML = `
+        <div class="bucket">
+          <div class="bucket-tank">
+            <div class="bucket-fill" id="bucket-fill" style="height: ${state.bucketTokens / state.bucketCap * 100}%"></div>
+            <div class="bucket-label">TOKENS</div>
+            <div class="bucket-count" id="bucket-count">${state.bucketTokens}</div>
+          </div>
+          <div class="bucket-refill">← refill<br/>2 tok/s</div>
+          <div class="bucket-cap">cap<br/>10 →</div>
+        </div>`;
+    } else if (state.algorithm === 'fixed_window' || state.algorithm === 'sliding_window') {
+      const limit = state.algorithm === 'fixed_window' ? 15 : 20;
+      const bars = Array.from({ length: 20 }, (_, i) => {
+        const pct = Math.max(5, Math.min(100, (i + 1) * (100 / limit)));
+        const kls = i < limit ? 'ok' : 'over';
+        return `<div class="bar ${kls}" style="height: ${pct}%"></div>`;
+      }).join('');
+      host.innerHTML = `<div class="window-viz">${bars}</div>
+        <div style="font-family:var(--mono); font-size: 10.5px; color: var(--text-ash); letter-spacing:.1em; text-align:center; margin-top:6px; text-transform:uppercase;">
+          ${state.algorithm === 'fixed_window' ? 'fixed calendar window · 10 s · cap 15' : 'rolling window · 10 s · cap 20'}
+        </div>`;
+    } else {
+      host.innerHTML = `
+        <div style="display:flex; gap: 12px; justify-content: center; align-items: flex-end; height: 94px;">
+          ${[0,1,2,3,4].map(i => `
+            <div style="width: 34px; height: ${i < 3 ? 70 : 34}px; background: ${i < 3 ? 'linear-gradient(180deg, var(--allow), var(--allow-deep))' : 'var(--ink-3)'}; border-radius: 2px; position: relative;">
+              <div style="position:absolute; top:-18px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:10px; color: ${i < 3 ? 'var(--allow)' : 'var(--text-ash)'};">#${i+1}</div>
+            </div>`).join('')}
+        </div>
+        <div style="font-family:var(--mono); font-size: 10.5px; color: var(--text-ash); letter-spacing:.1em; text-align:center; margin-top:14px; text-transform:uppercase;">
+          3 in-flight ceiling
+        </div>`;
+    }
+  }
+
+  function renderTicker(n) {
+    const tck = $('#ticker');
+    tck.innerHTML = '';
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement('div');
+      d.className = 'tick loading';
+      tck.appendChild(d);
+    }
+    for (let i = n; i < 25; i++) {
+      const d = document.createElement('div');
+      d.className = 'tick';
+      tck.appendChild(d);
+    }
+  }
+
+  function setTickerResult(i, ok, _result) {
+    const t = $('#ticker').children[i];
+    if (!t) return;
+    t.className = 'tick ' + (ok ? 'ok' : 'over');
+  }
+
+  function resetOutput() {
+    $('#sum-allowed').textContent = '● 0 allowed';
+    $('#sum-blocked').textContent = '● 0 blocked';
+    $('#sum-latency').textContent = '— p50 latency';
+    $('#last-status').textContent = 'firing…';
+    $('#last-status').className = 'v';
+    $('#last-remaining').textContent = '—';
+    $('#last-retry').textContent = '—';
+  }
+
+  async function fireOne(i, plan) {
+    const t0 = performance.now();
+    const payload = {
+      resource: 'GET:/demo',
+      subject:  state.subject,
+      cost:     1,
+      plan_id:  plan.id
+    };
+    try {
+      const r = await fetch(API_BASE + '/v1/check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': API_KEY },
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      const ms = Math.round(performance.now() - t0);
+      return { i, ok: r.ok && j.allowed, status: r.status, body: j, ms };
+    } catch (e) {
+      return { i, ok: false, status: 0, body: { error: String(e) }, ms: Math.round(performance.now() - t0) };
+    }
+  }
+
+  async function fireBurst() {
+    const plan = PLANS[state.algorithm];
+    const n = state.burst;
+
+    $('#fire-btn').disabled = true;
+    resetOutput();
+    renderTicker(n);
+
+    const promises = Array.from({ length: n }, (_, i) => fireOne(i, plan));
+    const results = await Promise.all(promises);
+    results.sort((a, b) => a.i - b.i);
+
+    let allowed = 0, blocked = 0;
+    results.forEach((r, i) => {
+      setTickerResult(i, r.ok, r.body);
+      if (r.ok) allowed++; else blocked++;
+    });
+
+    // stats
+    $('#sum-allowed').textContent = '● ' + allowed + ' allowed';
+    $('#sum-blocked').textContent = '● ' + blocked + ' blocked';
+    const msSorted = results.map(r => r.ms).sort((a, b) => a - b);
+    const p50 = msSorted[Math.floor(msSorted.length / 2)] || 0;
+    $('#sum-latency').textContent = p50 + ' ms p50 latency';
+
+    const last = results[results.length - 1].body;
+    if (last && 'allowed' in last) {
+      $('#last-status').textContent = last.allowed ? '200 allowed' : '429 throttled';
+      $('#last-status').className = 'v ' + (last.allowed ? 'allow' : 'block');
+      $('#last-remaining').textContent = (last.remaining != null ? last.remaining : '—') + ' / ' + (last.limit != null ? last.limit : '—');
+      $('#last-retry').textContent = (last.retry_after_ms != null ? last.retry_after_ms + ' ms' : '—');
+      $('#last-retry').className = 'v ' + (last.retry_after_ms > 0 ? 'amber' : '');
+    } else {
+      $('#last-status').textContent = 'network error';
+      $('#last-status').className = 'v block';
+    }
+
+    // animate bucket draining visually
+    if (state.algorithm === 'token_bucket') {
+      state.bucketTokens = Math.max(0, state.bucketCap - allowed);
+      updateBucketVisual();
+      // after fire, start a slow refill animation
+      let refillInterval = setInterval(() => {
+        state.bucketTokens = Math.min(state.bucketCap, state.bucketTokens + (state.refillPerSec * 0.4));
+        updateBucketVisual();
+        if (state.bucketTokens >= state.bucketCap) clearInterval(refillInterval);
+      }, 400);
+      setTimeout(() => clearInterval(refillInterval), 10000);
+    }
+
+    $('#fire-btn').disabled = false;
+  }
+
+  // --- Algorithm tabs ---
+  function selectAlgo(algo) {
+    state.algorithm = algo;
+    const plan = PLANS[algo];
+    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.algo === algo));
+    $('#algo-title').textContent =
+      algo === 'token_bucket'   ? 'Token bucket' :
+      algo === 'fixed_window'   ? 'Fixed window' :
+      algo === 'sliding_window' ? 'Sliding window' :
+                                  'Concurrency';
+    $('#algo-spec').textContent = plan.spec;
+    $('#algo-desc-p').textContent = DESCRIPTIONS[algo];
+    $('#plan-id-chip').textContent = plan.name;
+    $('#plan-window-chip').textContent = plan.chip;
+    state.bucketTokens = state.bucketCap;
+    renderAlgoVisual();
+    // reset output for new algo
+    resetOutput();
+    const tck = $('#ticker');
+    tck.innerHTML = '';
+    for (let i = 0; i < 25; i++) {
+      const d = document.createElement('div');
+      d.className = 'tick';
+      tck.appendChild(d);
+    }
+  }
+
+  // --- Event wiring ---
+  document.addEventListener('DOMContentLoaded', () => {
+    $('#subject-input').value = state.subject;
+
+    $('#subject-input').addEventListener('input', (e) => {
+      state.subject = e.target.value.trim() || randomSubject();
+    });
+
+    $('#burst-range').addEventListener('input', (e) => {
+      state.burst = parseInt(e.target.value, 10);
+      $('#burst-readout').textContent = state.burst + ' call' + (state.burst === 1 ? '' : 's');
+    });
+
+    $$('.tab').forEach(t => {
+      t.addEventListener('click', () => selectAlgo(t.dataset.algo));
+    });
+
+    $('#fire-btn').addEventListener('click', fireBurst);
+
+    selectAlgo('token_bucket');
+    probeHealth();
+    setInterval(probeHealth, 30000);
+
+    // Initial empty ticker
+    const tck = $('#ticker');
+    for (let i = 0; i < 25; i++) {
+      const d = document.createElement('div');
+      d.className = 'tick';
+      tck.appendChild(d);
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
