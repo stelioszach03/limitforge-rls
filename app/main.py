@@ -12,7 +12,6 @@ from app.api.admin import router as admin_router
 from app.observability.tracing import setup_tracing, instrument_fastapi
 from app.core.logging import setup_logging, get_logger
 
-
 setup_logging()
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)

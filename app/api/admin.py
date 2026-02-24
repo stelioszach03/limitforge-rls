@@ -17,7 +17,6 @@ from app.db.models import (
 )
 from app.rl.schemas import TenantCreate, PlanCreate, ApiKeyCreate, ResourcePolicyCreate
 
-
 router = APIRouter(prefix="/v1/admin")
 log = get_logger("api.admin")
 
