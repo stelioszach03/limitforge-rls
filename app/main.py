@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
 from prometheus_client import make_asgi_app
@@ -17,17 +16,15 @@ setup_logging()
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
 log = get_logger("app.main")
 
-# UI
+# UI — serve the self-contained editorial landing directly (no Jinja2
+# template vars needed) so it works regardless of Starlette version.
 app.mount("/static", StaticFiles(directory="ui/static"), name="static")
-templates = Jinja2Templates(directory="ui/templates")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     log.info("ui.index")
-    return templates.TemplateResponse(
-        "index.html", {"request": request, "app_name": settings.APP_NAME}
-    )
+    return FileResponse("ui/templates/index.html", media_type="text/html")
 
 
 # API
