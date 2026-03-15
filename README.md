@@ -1,15 +1,24 @@
-![CI](https://github.com/stelioszach03/limitforge-rls/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.11-blue)
-![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-informational)
+<div align="center">
+
+[![CI](https://github.com/stelioszach03/limitforge-rls/actions/workflows/ci.yml/badge.svg)](https://github.com/stelioszach03/limitforge-rls/actions)
 
 # LimitForge RLS
 
-A tenant-aware **rate-limit service** for APIs. Four algorithms —
-**token bucket**, **fixed window**, **sliding window**, **concurrency** —
-each compiled into a Redis Lua script so the decision, the header set, and
-the ledger update are indivisible. Plans and keys live in Postgres;
-decisions burn through Redis.
+**Tenant-aware rate-limit service with 4 algorithms (token bucket, fixed/sliding window, concurrency), atomic Redis Lua scripts, and a live burst-test playground.**
+
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen?style=flat-square)](.)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b?style=flat-square)](LICENSE)
+
+**[Live Landing](https://stelioszach.com/limitforge-rls/)**  ·  **[Burst-Test Widget](https://stelioszach.com/limitforge-rls/#playground)**  ·  **[API Docs](https://stelioszach.com/limitforge-rls/docs)**  ·  **[Prometheus](https://stelioszach.com/limitforge-rls/metrics/)**
+
+</div>
+
+Plans and keys live in Postgres; decisions burn through Redis.
 
 > A rate limiter is a contract, not a barrier — it tells the client exactly
 > how to behave.
