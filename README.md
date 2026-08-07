@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen?style=flat-square)](.)
+[![Coverage](https://img.shields.io/badge/line%20coverage-92.57%25-brightgreen?style=flat-square)](coverage.xml)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b?style=flat-square)](LICENSE)
 
@@ -211,10 +211,11 @@ plan to behave correctly:
 
 ## SDKs
 
-- **Python** — `pip install limitforge-sdk` — see `sdk/python/` for a thin
-  client and a ready-to-drop FastAPI middleware.
-- **Node** — `npm install limitforge-sdk` — see `sdk/node/` for a client and
-  Express middleware.
+Both live in this repo and are installed from source — **neither is published to
+PyPI or npm**.
+
+- **Python** — `pip install ./sdk/python` — thin client + FastAPI middleware.
+- **Node** — `npm install ./sdk/node` — client + Express middleware.
 
 ---
 
@@ -224,8 +225,32 @@ plan to behave correctly:
 pytest -q --cov=app --cov-branch --cov-report=term-missing
 ```
 
-CI runs on every push with a live Postgres 16 + Redis 7 service and a
-90% coverage gate. Ruff + Black gate lint and formatting.
+CI runs on every push against a live Postgres 16 + Redis 7 service, with a
+**hard `--cov-fail-under=90` gate** (`.github/workflows/ci.yml`). Ruff + Black
+gate lint and formatting.
+
+| Measure | Value | Source |
+| --- | --- | --- |
+| Line coverage | **92.57%** (536 / 579) | [`coverage.xml`](coverage.xml) |
+| Branch coverage | **79.55%** (70 / 88) | [`coverage.xml`](coverage.xml) |
+| CI gate | fails below 90% line | `.github/workflows/ci.yml` |
+
+---
+
+## Limitations
+
+- **Single Redis instance.** No cluster mode, no consistent hashing — a Redis
+  failover drops the decision path.
+- **Coverage is line/branch, not correctness.** The Lua scripts are exercised
+  against a real Redis in CI, but there is no adversarial concurrency or
+  fault-injection suite.
+- **No published throughput benchmark.** The service is designed for one Redis
+  round-trip per decision; that has not been load-tested here, so no req/s
+  number is claimed.
+- **Clock trust.** Sliding-window and concurrency algorithms rely on Redis
+  server time; heavy clock skew across regions is out of scope.
+- **Admin auth is a single static bearer token** — sufficient for a demo, not
+  for multi-operator production.
 
 ---
 
